@@ -16,6 +16,12 @@ export interface Operation {
   /** Tool arguments: path and query parameters at the top level, the request body under `body`. */
   inputSchema: JsonSchema;
   pathParams: string[];
+  /**
+   * Documented defaults of query parameters, sent whenever the caller leaves them out. The API
+   * does not always apply them itself: `GET /services/orders/price` answers 500 without
+   * `paymentTerm`, which the spec says defaults to "month".
+   */
+  queryDefaults: Record<string, unknown>;
 }
 
 /** Toolset -> API tags. A tag that is not listed lands in `other`, so new API sections stay opt-in. */
@@ -116,6 +122,7 @@ function buildOperation(method: string, path: string, source: SpecOperation, sch
   const pathParams = [...path.matchAll(/\{(\w+)\}/g)].map((match) => match[1]!);
   const properties: Record<string, JsonSchema> = Object.fromEntries(pathParams.map((param) => [param, { type: ["number", "string"] }]));
   const required = [...pathParams];
+  const queryDefaults: Record<string, unknown> = {};
   for (const param of source.parameters ?? []) {
     const isPath = param.in === "path" && pathParams.includes(param.name);
     // Headers are left out: the only one upstream declares is a browser's user-agent.
@@ -123,8 +130,10 @@ function buildOperation(method: string, path: string, source: SpecOperation, sch
     if (param.name === "body" || (!isPath && pathParams.includes(param.name))) {
       throw new Error(`parameter "${param.name}" is ambiguous`);
     }
-    properties[param.name] = { ...toJsonSchema(param.schema ?? {}, schemas), ...(param.description && { description: param.description }) };
+    const schema = toJsonSchema(param.schema ?? {}, schemas);
+    properties[param.name] = { ...schema, ...(param.description && { description: param.description }) };
     if (param.required && !isPath) required.push(param.name);
+    if (!isPath && schema.default !== undefined) queryDefaults[param.name] = schema.default;
   }
 
   if (source.requestBody) {
@@ -151,6 +160,7 @@ function buildOperation(method: string, path: string, source: SpecOperation, sch
     readOnly: method === "GET" || READ_ONLY_POSTS.has(route),
     inputSchema: { type: "object", properties, ...(required.length && { required }), additionalProperties: false },
     pathParams,
+    queryDefaults,
   };
 }
 

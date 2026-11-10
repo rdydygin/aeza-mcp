@@ -74,8 +74,9 @@ export function createApi({ baseUrl, apiKey, fetch = globalThis.fetch, maxRetrie
   };
 }
 
+/** An empty body is `undefined`, which keeps it apart from a JSON `null`. */
 function parse(response: Response, text: string): unknown {
-  if (text === "") return null;
+  if (text === "") return undefined;
   if (!response.headers.get("content-type")?.includes("json")) return text;
   try {
     return JSON.parse(text);

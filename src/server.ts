@@ -49,7 +49,7 @@ export function createServer(options: ServerOptions): McpServer {
       async ({ body, ...params }): Promise<CallToolResult> => {
         const isPath = ([name]: [string, unknown]) => operation.pathParams.includes(name);
         const pathParams = Object.fromEntries(Object.entries(params).filter(isPath));
-        const query = Object.fromEntries(Object.entries(params).filter((entry) => !isPath(entry)));
+        const query = { ...operation.queryDefaults, ...Object.fromEntries(Object.entries(params).filter((entry) => !isPath(entry))) };
         try {
           const data = await options.api({ method: operation.method, path: operation.path, pathParams, query, body });
           return { content: [{ type: "text", text: render(data, maxOutputChars) }] };
@@ -63,6 +63,8 @@ export function createServer(options: ServerOptions): McpServer {
 }
 
 function render(data: unknown, limit: number): string {
+  // Most actions answer with no body at all; say so instead of handing the model a bare "null".
+  if (data === undefined) return "OK (the API returned an empty response)";
   const text = typeof data === "string" ? data : JSON.stringify(data);
   if (text.length <= limit) return text;
 

@@ -133,7 +133,29 @@ test("retries rate-limited requests", async () => {
   const result = await client.callTool({ name: "services_get_list", arguments: { limit: 5 } });
 
   expect(JSON.parse(text(result))).toEqual({ items: [], total: 0 });
-  expect(requests.map((request) => request.url.search)).toEqual(["?limit=5", "?limit=5"]);
+  expect(requests.map((request) => request.url.search)).toEqual(["?offset=0&limit=5", "?offset=0&limit=5"]);
+});
+
+test("sends the documented defaults of query parameters the caller leaves out", async () => {
+  // The API answers 500 to a price request without paymentTerm, although the spec gives it a default.
+  const { client, requests } = await connect(() => Response.json({}));
+
+  await client.callTool({ name: "services_orders_get_price", arguments: { productId: 7 } });
+  await client.callTool({ name: "services_orders_get_price", arguments: { productId: 7, paymentTerm: "year" } });
+
+  expect(requests.map((request) => request.url.search)).toEqual([
+    "?paymentTerm=month&termCount=1&productId=7",
+    "?paymentTerm=year&termCount=1&productId=7",
+  ]);
+});
+
+test("says so when the API answers with an empty body", async () => {
+  const { client } = await connect(() => new Response(null, { status: 204 }));
+
+  const result = await client.callTool({ name: "services_get_by_id", arguments: { id: 1 } });
+
+  expect(result.isError).toBeFalsy();
+  expect(text(result)).toBe("OK (the API returned an empty response)");
 });
 
 test("truncates oversized lists at an item boundary", async () => {
