@@ -13,6 +13,8 @@ export interface Operation {
   path: string;
   /** The operation does not change anything on the account. */
   readOnly: boolean;
+  /** The operation deletes or overwrites data: every DELETE, plus a reinstall or a backup restore. */
+  deletes: boolean;
   /** Tool arguments: path and query parameters at the top level, the request body under `body`. */
   inputSchema: JsonSchema;
   pathParams: string[];
@@ -67,6 +69,9 @@ const READ_ONLY_POSTS = new Set([
   "POST /services/{id}/additional-resources/get-price",
 ]);
 
+/** POST operations that wipe a service's disk as surely as deleting the service would. */
+const DELETING_POSTS = new Set(["POST /services/{id}/reinstall", "POST /services/{serviceId}/backups/{backupId}/restore"]);
+
 const METHODS = ["get", "post", "put", "patch", "delete"];
 
 /** JSON Schema keywords that mean the same in OpenAPI 3.0 and are copied as they are. */
@@ -106,6 +111,12 @@ export function buildOperations(spec: Spec, log: (message: string) => void = () 
       } catch (error) {
         log(`skipped ${method.toUpperCase()} ${path}: ${error instanceof Error ? error.message : String(error)}`);
       }
+    }
+  }
+  // A moved route would no longer be held back by AEZA_ALLOW_DELETE, so say so.
+  for (const route of DELETING_POSTS) {
+    if (!operations.some((operation) => `${operation.method} ${operation.path}` === route)) {
+      log(`${route} is gone from the spec: if it moved, its new route is not gated by AEZA_ALLOW_DELETE`);
     }
   }
   return operations;
@@ -158,6 +169,7 @@ function buildOperation(method: string, path: string, source: SpecOperation, sch
     method,
     path,
     readOnly: method === "GET" || READ_ONLY_POSTS.has(route),
+    deletes: method === "DELETE" || DELETING_POSTS.has(route),
     inputSchema: { type: "object", properties, ...(required.length && { required }), additionalProperties: false },
     pathParams,
     queryDefaults,

@@ -34,7 +34,7 @@ const text = (result: { content: unknown }) => (result.content as Array<{ type: 
 test("selects tools by toolset and read-only mode", () => {
   const names = (selected: typeof operations) => selected.map((operation) => operation.name);
   expect(names(selectOperations(operations))).not.toContain("auth_tfa_use_totp");
-  expect(selectOperations(operations, { toolsets: ["all"] })).toHaveLength(operations.length);
+  expect(selectOperations(operations, { toolsets: ["all"], allowDelete: true })).toHaveLength(operations.length);
   expect(new Set(selectOperations(operations, { toolsets: ["domains", "billing"] }).map((o) => o.toolset))).toEqual(
     new Set(["domains", "billing"]),
   );
@@ -46,8 +46,33 @@ test("selects tools by toolset and read-only mode", () => {
   expect(() => selectOperations(operations, { toolsets: ["nope"] })).toThrow("Unknown toolset: nope");
 });
 
+test("exposes deletion tools only when explicitly allowed", () => {
+  const deletions = (options: Partial<ServerOptions>) =>
+    selectOperations(operations, { toolsets: ["all"], ...options }).filter((operation) => operation.deletes);
+
+  expect(deletions({})).toHaveLength(0);
+  expect(deletions({ allowDelete: false })).toHaveLength(0);
+  expect(deletions({ allowDelete: true, readOnly: true })).toHaveLength(0);
+  const allowed = deletions({ allowDelete: true }).map((operation) => operation.name);
+  expect(allowed).toContain("services_request_deletion");
+  expect(allowed).toContain("domains_delete_record");
+  expect(allowed).toContain("services_reinstall");
+  expect(allowed).toContain("service_backups_restore");
+  expect(allowed).toHaveLength(operations.filter((operation) => operation.deletes).length);
+
+  // Everything else that changes the account stays available without the flag.
+  expect(selectOperations(operations).map((operation) => operation.name)).toContain("domains_create_record");
+});
+
+test("tells the model when deletion is disabled", async () => {
+  const instructions = async (options: Partial<ServerOptions>) => (await connect(() => Response.json({}), options)).client.getInstructions();
+  expect(await instructions({})).toContain("AEZA_ALLOW_DELETE=1");
+  expect(await instructions({ allowDelete: true })).not.toContain("AEZA_ALLOW_DELETE");
+  expect(await instructions({ readOnly: true })).not.toContain("AEZA_ALLOW_DELETE");
+});
+
 test("lists every tool with its schema and annotations", async () => {
-  const { client } = await connect(() => Response.json({}), { toolsets: ["all"] });
+  const { client } = await connect(() => Response.json({}), { toolsets: ["all"], allowDelete: true });
   const listed = [];
   let cursor: string | undefined;
   do {
@@ -68,7 +93,7 @@ test("lists every tool with its schema and annotations", async () => {
 
 test("every tool's schema compiles and validates", async () => {
   // A schema the validator cannot compile only fails when its tool is called, so call them all.
-  const { client, requests } = await connect(() => Response.json({}), { toolsets: ["all"] });
+  const { client, requests } = await connect(() => Response.json({}), { toolsets: ["all"], allowDelete: true });
 
   for (const operation of operations) {
     const result = await client.callTool({ name: operation.name, arguments: { unexpected: true } });
