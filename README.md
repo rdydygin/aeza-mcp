@@ -37,6 +37,7 @@ With [Bun](https://bun.sh), `bunx aeza-mcp` does the same without Node.
 | `AEZA_API_KEY` | | API key of the account. Without it only public endpoints work |
 | `AEZA_TOOLSETS` | everything but `internal` and `other` | Comma-separated toolsets to expose, or `all` |
 | `AEZA_READ_ONLY` | off | `1` exposes only tools that change nothing |
+| `AEZA_ALLOW_DELETE` | off | `1` exposes tools that delete something: servers, domains and DNS records, backups, API keys, the account itself. Ignored with `AEZA_READ_ONLY` |
 | `AEZA_MAX_OUTPUT_CHARS` | `40000` | Longer results are cut, lists at an item boundary with a note on how many items are missing |
 | `AEZA_BASE_URL` | `https://my.aeza.ru/api/v2` | |
 
@@ -53,20 +54,20 @@ The spec is cached in `~/.cache/aeza-mcp` (or `$XDG_CACHE_HOME/aeza-mcp`). Each 
 
 Counts are for the spec as of November 2026.
 
-| Toolset | Tools | Read-only | Covers |
-| --- | --- | --- | --- |
-| `services` | 53 | 20 | Servers: power, reinstall, rescue, stats, prolongation, backups, IPs and PTR, SSH keys, extra resources |
-| `catalog` | 8 | 7 | Products, groups and types; price calculation and ordering |
-| `domains` | 15 | 8 | Domains and DNS records, availability and delegation checks |
-| `billing` | 18 | 11 | Transactions, invoices, payment methods, recurrent payments, withdrawals |
-| `account` | 28 | 8 | Profile, API keys, sessions, SSO links, companies, notifications |
-| `support` | 19 | 9 | Tickets, messages, ratings, file uploads |
-| `promo` | 16 | 9 | Referral program, gifts, bonuses, gift codes |
-| `system` | 8 | 7 | Health, version, error catalog, alerts |
-| `internal` | 19 | 7 | Plumbing of the web panel (login flows, websocket tokens, web push, consents); off by default |
-| `other` | 0 | 0 | API sections added after this list was written; off by default |
+| Toolset | Tools | Read-only | Deleting | Covers |
+| --- | --- | --- | --- | --- |
+| `services` | 53 | 20 | 5 | Servers: power, reinstall, rescue, stats, prolongation, backups, IPs and PTR, SSH keys, extra resources |
+| `catalog` | 8 | 7 | 0 | Products, groups and types; price calculation and ordering |
+| `domains` | 15 | 8 | 2 | Domains and DNS records, availability and delegation checks |
+| `billing` | 18 | 11 | 2 | Transactions, invoices, payment methods, recurrent payments, withdrawals |
+| `account` | 28 | 8 | 5 | Profile, API keys, sessions, SSO links, companies, notifications |
+| `support` | 19 | 9 | 0 | Tickets, messages, ratings, file uploads |
+| `promo` | 16 | 9 | 0 | Referral program, gifts, bonuses, gift codes |
+| `system` | 8 | 7 | 0 | Health, version, error catalog, alerts |
+| `internal` | 19 | 7 | 1 | Plumbing of the web panel (login flows, websocket tokens, web push, consents); off by default |
+| `other` | 0 | 0 | 0 | API sections added after this list was written; off by default |
 
-The default set is 165 tools, about 72 KB of tool definitions. Clients that load every definition into the model's context up front do better with a narrower `AEZA_TOOLSETS`, for example `services,catalog,domains` (76 tools, 36 KB).
+Deleting tools are the API's `DELETE` operations; they are left out unless `AEZA_ALLOW_DELETE=1`. The default set is 151 tools, about 67 KB of tool definitions. Clients that load every definition into the model's context up front do better with a narrower `AEZA_TOOLSETS`, for example `services,catalog,domains` (69 tools, 34 KB).
 
 ## Tools
 
@@ -78,7 +79,7 @@ A tool is named after its API section and operation: `services_get_list`, `domai
 
 Arguments are validated against the spec before anything is sent. API errors come back as tool errors with the API's status, error code and details. Rate-limited requests (the API allows 10 per second) are retried.
 
-Tools that are not read-only act on the real account: orders and prolongations spend its balance, deleting or reinstalling a server destroys its data. They are annotated as destructive so clients can ask for confirmation; `AEZA_READ_ONLY=1` removes them entirely.
+Tools that are not read-only act on the real account: orders and prolongations spend its balance, deleting or reinstalling a server destroys its data. They are annotated as destructive so clients can ask for confirmation; `AEZA_READ_ONLY=1` removes them entirely. Deleting tools are not exposed at all until you opt in with `AEZA_ALLOW_DELETE=1`; without it the model is told that deletion is disabled and how to enable it. Reinstalling, restoring a backup and other actions that overwrite data are not `DELETE` operations and stay available.
 
 ## Development
 

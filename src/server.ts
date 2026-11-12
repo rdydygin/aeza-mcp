@@ -10,6 +10,8 @@ export interface ServerOptions {
   toolsets?: string[];
   /** Expose only tools that do not change anything on the account. */
   readOnly?: boolean;
+  /** Expose tools that delete something (HTTP DELETE): services, domains, backups, API keys, the account itself. Off by default. */
+  allowDelete?: boolean;
   /** Longer tool results are truncated, so one big list cannot flood the model's context. Default: 40 000. */
   maxOutputChars?: number;
 }
@@ -18,19 +20,30 @@ const INSTRUCTIONS = `Tools mirror the Aeza hosting REST API (my.aeza.ru/api/v2)
 Most list tools take offset and limit; some lists are large, so filter where the tool allows it.
 Tools that are not read-only act on the real account: ordering, prolonging and buying spend its balance; deleting or reinstalling a service destroys its data. Confirm such actions with the user first.`;
 
+const NO_DELETE = `
+Tools that delete something are not available: the user has not enabled them. To delete a service, domain, backup or anything else, the user can do it in the Aeza panel or restart this server with AEZA_ALLOW_DELETE=1.`;
+
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
 
-export function selectOperations(operations: Operation[], options: Pick<ServerOptions, "toolsets" | "readOnly"> = {}): Operation[] {
+export function selectOperations(
+  operations: Operation[],
+  options: Pick<ServerOptions, "toolsets" | "readOnly" | "allowDelete"> = {},
+): Operation[] {
   const requested = options.toolsets ?? defaultToolsets;
   const unknown = requested.filter((name) => name !== "all" && !toolsets.includes(name));
   if (unknown.length) throw new Error(`Unknown toolset: ${unknown.join(", ")}. Available: all, ${toolsets.join(", ")}`);
   const enabled = new Set(requested.includes("all") ? toolsets : requested);
-  return operations.filter((operation) => enabled.has(operation.toolset) && (!options.readOnly || operation.readOnly));
+  return operations.filter(
+    (operation) =>
+      enabled.has(operation.toolset) &&
+      (!options.readOnly || operation.readOnly) &&
+      (options.allowDelete || operation.method !== "DELETE"),
+  );
 }
 
 export function createServer(options: ServerOptions): McpServer {
   const maxOutputChars = options.maxOutputChars ?? 40_000;
-  const server = new McpServer({ name: "aeza", version }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "aeza", version }, { instructions: INSTRUCTIONS + (options.allowDelete || options.readOnly ? "" : NO_DELETE) });
 
   for (const operation of selectOperations(options.operations, options)) {
     server.registerTool(
