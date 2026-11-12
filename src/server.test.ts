@@ -48,7 +48,7 @@ test("selects tools by toolset and read-only mode", () => {
 
 test("exposes deletion tools only when explicitly allowed", () => {
   const deletions = (options: Partial<ServerOptions>) =>
-    selectOperations(operations, { toolsets: ["all"], ...options }).filter((operation) => operation.method === "DELETE");
+    selectOperations(operations, { toolsets: ["all"], ...options }).filter((operation) => operation.deletes);
 
   expect(deletions({})).toHaveLength(0);
   expect(deletions({ allowDelete: false })).toHaveLength(0);
@@ -56,7 +56,9 @@ test("exposes deletion tools only when explicitly allowed", () => {
   const allowed = deletions({ allowDelete: true }).map((operation) => operation.name);
   expect(allowed).toContain("services_request_deletion");
   expect(allowed).toContain("domains_delete_record");
-  expect(allowed).toHaveLength(operations.filter((operation) => operation.method === "DELETE").length);
+  expect(allowed).toContain("services_reinstall");
+  expect(allowed).toContain("service_backups_restore");
+  expect(allowed).toHaveLength(operations.filter((operation) => operation.deletes).length);
 
   // Everything else that changes the account stays available without the flag.
   expect(selectOperations(operations).map((operation) => operation.name)).toContain("domains_create_record");

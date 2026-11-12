@@ -36,11 +36,15 @@ test("sorts every tag of the real spec into a toolset", () => {
   expect(find("auth_tfa_use_totp").toolset).toBe("internal");
 });
 
-test("marks lookups as read-only", () => {
+test("marks lookups as read-only and data-destroying operations as deleting", () => {
   expect(find("services_get_list").readOnly).toBe(true);
   expect(find("domains_check_domain_available")).toMatchObject({ method: "POST", readOnly: true });
   expect(find("services_orders_create_order").readOnly).toBe(false);
   expect(find("services_request_deletion").readOnly).toBe(false);
+  expect(find("services_request_deletion").deletes).toBe(true);
+  expect(find("services_reinstall")).toMatchObject({ method: "POST", deletes: true });
+  expect(find("service_backups_restore")).toMatchObject({ method: "POST", deletes: true });
+  expect(find("service_backups_create").deletes).toBe(false);
 });
 
 test("flattens path and query parameters, nests the body", () => {
@@ -88,5 +92,9 @@ test("keeps going when an operation cannot be converted", () => {
 
   // "things" is a tag this server has never seen: off by default, in "other".
   expect(built.map(({ name, toolset }) => ({ name, toolset }))).toEqual([{ name: "things_get_list", toolset: "other" }]);
-  expect(log).toEqual(['skipped POST /things: unresolvable $ref "#/components/schemas/Missing"']);
+  expect(log).toEqual([
+    'skipped POST /things: unresolvable $ref "#/components/schemas/Missing"',
+    "POST /services/{id}/reinstall is gone from the spec: if it moved, its new route is not gated by AEZA_ALLOW_DELETE",
+    "POST /services/{serviceId}/backups/{backupId}/restore is gone from the spec: if it moved, its new route is not gated by AEZA_ALLOW_DELETE",
+  ]);
 });
